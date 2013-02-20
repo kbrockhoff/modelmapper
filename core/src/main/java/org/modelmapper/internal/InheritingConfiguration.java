@@ -52,6 +52,7 @@ public class InheritingConfiguration implements Configuration {
   private NamingConvention sourceNamingConvention;
   Boolean enableFieldMatching;
   Boolean ignoreAmbiguity;
+  private Boolean convertingBlanksToNulls;
 
   /**
    * Creates an initial InheritingConfiguration.
@@ -71,6 +72,7 @@ public class InheritingConfiguration implements Configuration {
     methodAccessLevel = AccessLevel.PUBLIC;
     enableFieldMatching = Boolean.FALSE;
     ignoreAmbiguity = Boolean.FALSE;
+    convertingBlanksToNulls = Boolean.FALSE;
   }
 
   /**
@@ -96,6 +98,7 @@ public class InheritingConfiguration implements Configuration {
       methodAccessLevel = source.methodAccessLevel;
       enableFieldMatching = source.enableFieldMatching;
       ignoreAmbiguity = source.ignoreAmbiguity;
+      convertingBlanksToNulls = source.convertingBlanksToNulls;
     }
   }
 
@@ -259,4 +262,14 @@ public class InheritingConfiguration implements Configuration {
     sourceNamingConvention = Assert.notNull(namingConvention);
     return this;
   }
+  
+  public Configuration setConvertingBlanksToNulls(boolean convertBlanks) {
+    convertingBlanksToNulls = convertBlanks;
+    return this;
+  }
+  
+  public boolean isConvertingBlanksToNulls() {
+    return convertingBlanksToNulls;
+  }
+
 }

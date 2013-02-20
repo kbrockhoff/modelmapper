@@ -330,7 +330,11 @@ public class MappingEngineImpl implements MappingEngine {
    */
   private <S, D> D convert(MappingContext<S, D> context, Converter<S, D> converter) {
     try {
-      return converter.convert(context);
+      if (shouldBlankSourceConvertToNull(context)) {
+        return null;  
+      } else {
+        return converter.convert(context);
+      }
     } catch (ErrorsException e) {
       throw e;
     } catch (Exception e) {
@@ -338,6 +342,29 @@ public class MappingEngineImpl implements MappingEngine {
           context.getSourceType(), context.getDestinationType(), e);
       return null;
     }
+  }
+  
+  private <S, D> boolean shouldBlankSourceConvertToNull(MappingContext<S, D> context) {
+    return configuration.isConvertingBlanksToNulls() &&
+            CharSequence.class.isAssignableFrom(context.getSourceType()) &&
+            !CharSequence.class.isAssignableFrom(context.getDestinationType()) &&
+            isBlank((CharSequence) context.getSource()); 
+  }
+  
+  private boolean isBlank(CharSequence str) {
+    boolean result;
+    if (str == null || str.length() == 0) {
+      result = true;
+    } else {
+      result = true;
+      for (int i = 0; i < str.length(); i++) {
+        if (!Character.isWhitespace(str.charAt(i))) {
+          result = false;
+          break;
+        }
+      }
+    }
+    return result;
   }
 
   /**

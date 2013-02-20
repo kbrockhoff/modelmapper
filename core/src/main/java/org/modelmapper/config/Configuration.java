@@ -245,4 +245,20 @@ public interface Configuration {
    * @throws IllegalArgumentException if {@code namingConvention} is null
    */
   Configuration setSourceNamingConvention(NamingConvention namingConvention);
+  
+  /**
+   * Sets whether blank strings should be converted to nulls instead of throwing the
+   * default mapping exception.
+   *
+   * @param convertBlanks  convert blanks or not
+   */
+  Configuration setConvertingBlanksToNulls(boolean convertBlanks);
+  
+  /**
+   * Returns whether blanks are converted to nulls or not.
+   * 
+   * @see #setConvertingBlanksToNulls(boolean)
+   */
+  boolean isConvertingBlanksToNulls();
+  
 }
