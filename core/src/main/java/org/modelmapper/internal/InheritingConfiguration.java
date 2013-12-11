@@ -59,6 +59,7 @@ public class InheritingConfiguration implements Configuration {
   private Boolean ambiguityIgnored;
   private Boolean fullTypeMatchingRequired;
   private Boolean implicitMatchingEnabled;
+  private Boolean convertingBlanksToNulls;
 
   /**
    * Creates an initial InheritingConfiguration.
@@ -81,6 +82,7 @@ public class InheritingConfiguration implements Configuration {
     ambiguityIgnored = Boolean.FALSE;
     fullTypeMatchingRequired = Boolean.FALSE;
     implicitMatchingEnabled = Boolean.TRUE;
+    convertingBlanksToNulls = Boolean.FALSE;
   }
 
   /**
@@ -111,6 +113,7 @@ public class InheritingConfiguration implements Configuration {
       propertyCondition = source.propertyCondition;
       fullTypeMatchingRequired = source.fullTypeMatchingRequired;
       implicitMatchingEnabled = source.implicitMatchingEnabled;
+      convertingBlanksToNulls = source.convertingBlanksToNulls;
     }
   }
 
@@ -312,4 +315,14 @@ public class InheritingConfiguration implements Configuration {
     sourceNamingConvention = Assert.notNull(namingConvention);
     return this;
   }
+
+  public Configuration setConvertingBlanksToNulls(boolean convertBlanks) {
+    convertingBlanksToNulls = convertBlanks;
+    return this;
+  }
+  
+  public boolean isConvertingBlanksToNulls() {
+    return convertingBlanksToNulls;
+  }
+
 }
