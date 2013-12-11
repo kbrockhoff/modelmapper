@@ -24,6 +24,7 @@ import java.util.Map;
 
 import org.modelmapper.Provider.ProvisionRequest;
 import org.modelmapper.TypeMap;
+import org.modelmapper.TypeToken;
 import org.modelmapper.internal.util.Assert;
 import org.modelmapper.internal.util.Types;
 import org.modelmapper.spi.Mapping;
@@ -44,10 +45,11 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
   /** Tracks intermediate destination objects on the path to the destination */
   final List<Object> intermediateDestinations;
   final Errors errors;
-  @SuppressWarnings("unused") private final MappingContextImpl<?, ?> parent;
+  private final MappingContextImpl<?, ?> parent;
   private D destination;
   private final Class<D> destinationType;
   private final Type genericDestinationType;
+  private final String typeMapName;
   /** Whether requested mapping is to a provided destination object */
   final boolean providedDestination;
   private Mapping mapping;
@@ -56,7 +58,6 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
   private final Class<S> sourceType;
   private Object parentSource;
   private TypeMap<S, D> typeMap;
-  private TypeMap<?, ?> parentTypeMap;
   /** Tracks destination hierarchy paths that were shaded by a condition */
   private final List<String> shadedPaths;
 
@@ -64,7 +65,7 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
    * Create initial MappingContext.
    */
   public MappingContextImpl(S source, Class<S> sourceType, D destination, Class<D> destinationType,
-      Type genericDestinationType, MappingEngine mappingEngine) {
+      Type genericDestinationType, String typeMapName, MappingEngine mappingEngine) {
     parent = null;
     this.source = source;
     this.sourceType = sourceType;
@@ -72,6 +73,7 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
     this.destinationType = destinationType;
     this.genericDestinationType = genericDestinationType == null ? destinationType
         : genericDestinationType;
+    this.typeMapName = typeMapName;
     providedDestination = destination != null;
     this.mappingEngine = mappingEngine;
     errors = new Errors();
@@ -82,21 +84,23 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
   }
 
   /**
-   * Create derived MappingContext. The mapping is no longer mapped to S and D in this scope.
+   * Create derived MappingContext.
    * 
    * @param inheritValues whether values from the source {@code context} should be inherited
    */
   MappingContextImpl(MappingContextImpl<?, ?> context, S source, Class<S> sourceType,
-      D destination, Class<D> destinationType, Mapping mapping, boolean inheritValues) {
+      D destination, Class<D> destinationType, Type genericDestinationType, Mapping mapping,
+      boolean inheritValues) {
     this.parent = context;
     this.source = source;
     this.sourceType = sourceType;
     this.destination = destination;
     this.destinationType = destinationType;
-    this.genericDestinationType = destinationType;
+    this.genericDestinationType = genericDestinationType == null ? destinationType
+        : genericDestinationType;
     this.providedDestination = context.providedDestination;
     this.typeMap = null;
-    this.parentTypeMap = context.typeMap;
+    this.typeMapName = null;
     this.mapping = mapping;
     parentSource = context.parentSource;
     mappingEngine = context.mappingEngine;
@@ -111,8 +115,19 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
   public <CS, CD> MappingContext<CS, CD> create(CS source, Class<CD> destinationType) {
     Assert.notNull(source, "source");
     Assert.notNull(destinationType, "destinationType");
+
     return new MappingContextImpl<CS, CD>(this, source, Types.<CS>deProxy(source.getClass()), null,
-        destinationType, mapping, false);
+        destinationType, null, mapping, false);
+  }
+
+  /** Creates a child MappingContext for an element of a destination collection. */
+  public <CS, CD> MappingContext<CS, CD> create(CS source, Type destinationType) {
+    Assert.notNull(source, "source");
+    Assert.notNull(destinationType, "destinationType");
+    TypeToken<CD> destinationTypeToken = TypeToken.<CD>of(destinationType);
+
+    return new MappingContextImpl<CS, CD>(this, source, Types.<CS>deProxy(source.getClass()), null,
+        destinationTypeToken.getRawType(), destinationTypeToken.getType(), mapping, false);
   }
 
   @Override
@@ -152,6 +167,10 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
     return mappingEngine;
   }
 
+  public MappingContext<?, ?> getParent() {
+    return parent;
+  }
+
   public Class<D> getRequestedType() {
     return destinationType;
   }
@@ -166,6 +185,10 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
 
   public TypeMap<S, D> getTypeMap() {
     return typeMap;
+  }
+
+  public String getTypeMapName() {
+    return typeMapName;
   }
 
   @Override
@@ -204,7 +227,7 @@ public class MappingContextImpl<S, D> implements MappingContext<S, D>, Provision
   }
 
   TypeMap<?, ?> parentTypeMap() {
-    return parentTypeMap;
+    return parent == null ? null : parent.typeMap;
   }
 
   void setDestination(D destination) {

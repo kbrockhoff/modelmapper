@@ -40,6 +40,19 @@ public interface MappingContext<S, D> {
   <CS, CD> MappingContext<CS, CD> create(CS source, Class<CD> destinationType);
 
   /**
+   * Creates a new child MappingContext for the {@code source} and {@code destinationType} which
+   * inherits all other information from the this MappingContext.
+   * 
+   * @param <CS> child source type
+   * @param <CD> child destination type
+   * @param source to map from
+   * @param destinationType to map to
+   * @return new child MappingContext
+   * @throws IllegalArgumentException if {@code source} or {@code destinatinoType} are null
+   */
+  <CS, CD> MappingContext<CS, CD> create(CS source, Type destinationType);
+
+  /**
    * Returns the destination object being mapped to or null if the destination has not yet been
    * initialized.
    */
@@ -67,6 +80,12 @@ public interface MappingContext<S, D> {
   MappingEngine getMappingEngine();
 
   /**
+   * Returns the parent MappingContext from which the current MappingContext was created, else
+   * {@code null} if there is no parent context.
+   */
+  MappingContext<?, ?> getParent();
+
+  /**
    * Returns the source object being mapped from.
    **/
   S getSource();
@@ -81,4 +100,10 @@ public interface MappingContext<S, D> {
    * not originate from a TypeMap.
    */
   TypeMap<S, D> getTypeMap();
+
+  /**
+   * Returns the name of the TypeMap associated with the mapping request else {@code null} if the
+   * request did not originate from a named TypeMap.
+   */
+  String getTypeMapName();
 }

@@ -26,7 +26,6 @@ import org.modelmapper.Converter;
 import org.modelmapper.PropertyMap;
 import org.modelmapper.Provider;
 import org.modelmapper.TypeMap;
-import org.modelmapper.config.Configuration;
 import org.modelmapper.internal.util.Assert;
 import org.modelmapper.internal.util.Types;
 import org.modelmapper.spi.Mapping;
@@ -40,23 +39,27 @@ import org.modelmapper.spi.PropertyInfo;
 class TypeMapImpl<S, D> implements TypeMap<S, D> {
   private final Class<S> sourceType;
   private final Class<D> destinationType;
-  final Configuration configuration;
+  private final String name;
+  final InheritingConfiguration configuration;
   private final MappingEngineImpl engine;
   /** Guarded by "mappings" */
   private final Map<String, PropertyInfo> mappedProperties = new HashMap<String, PropertyInfo>();
   /** Guarded by "mappings" */
   private final Map<String, MappingImpl> mappings = new TreeMap<String, MappingImpl>();
   private Converter<S, D> converter;
+  private Converter<S, D> preConverter;
+  private Converter<S, D> postConverter;
   private Condition<?, ?> condition;
   private Provider<D> provider;
   private Converter<?, ?> propertyConverter;
   private Condition<?, ?> propertyCondition;
   private Provider<?> propertyProvider;
 
-  TypeMapImpl(Class<S> sourceType, Class<D> destinationType, Configuration configuration,
-      MappingEngineImpl engine) {
+  TypeMapImpl(Class<S> sourceType, Class<D> destinationType, String name,
+      InheritingConfiguration configuration, MappingEngineImpl engine) {
     this.sourceType = sourceType;
     this.destinationType = destinationType;
+    this.name = name;
     this.configuration = configuration;
     this.engine = engine;
   }
@@ -66,7 +69,7 @@ class TypeMapImpl<S, D> implements TypeMap<S, D> {
       new Errors().mappingForEnum().throwConfigurationExceptionIfErrorsExist();
 
     synchronized (mappings) {
-      for (MappingImpl mapping : new MappingBuilderImpl<S, D>(sourceType, destinationType,
+      for (MappingImpl mapping : new ExplicitMappingBuilder<S, D>(sourceType, destinationType,
           configuration).build(propertyMap)) {
         MappingImpl existingMapping = addMapping(mapping);
         if (existingMapping != null && existingMapping.isExplicit())
@@ -92,6 +95,18 @@ class TypeMapImpl<S, D> implements TypeMap<S, D> {
     synchronized (mappings) {
       return new ArrayList<Mapping>(mappings.values());
     }
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public Converter<S, D> getPostConverter() {
+    return postConverter;
+  }
+
+  public Converter<S, D> getPreConverter() {
+    return preConverter;
   }
 
   public Condition<?, ?> getPropertyCondition() {
@@ -130,7 +145,7 @@ class TypeMapImpl<S, D> implements TypeMap<S, D> {
   public D map(S source) {
     Class<S> sourceType = Types.<S>deProxy(source.getClass());
     MappingContextImpl<S, D> context = new MappingContextImpl<S, D>(source, sourceType, null,
-        destinationType, null, engine);
+        destinationType, null, name, engine);
     D result = null;
 
     try {
@@ -146,7 +161,7 @@ class TypeMapImpl<S, D> implements TypeMap<S, D> {
   public void map(S source, D destination) {
     Class<S> sourceType = Types.<S>deProxy(source.getClass());
     MappingContextImpl<S, D> context = new MappingContextImpl<S, D>(source, sourceType,
-        destination, destinationType, null, engine);
+        destination, destinationType, null, name, engine);
 
     try {
       engine.typeMap(context, this);
@@ -164,6 +179,16 @@ class TypeMapImpl<S, D> implements TypeMap<S, D> {
 
   public TypeMap<S, D> setConverter(Converter<S, D> converter) {
     this.converter = Assert.notNull(converter, "converter");
+    return this;
+  }
+
+  public TypeMap<S, D> setPostConverter(Converter<S, D> converter) {
+    this.postConverter = Assert.notNull(converter, "converter");
+    return this;
+  }
+
+  public TypeMap<S, D> setPreConverter(Converter<S, D> converter) {
+    this.preConverter = Assert.notNull(converter, "converter");
     return this;
   }
 
@@ -189,12 +214,18 @@ class TypeMapImpl<S, D> implements TypeMap<S, D> {
 
   @Override
   public String toString() {
-    return String.format("TypeMap[%s -> %s]", sourceType.getSimpleName(),
-        destinationType.getSimpleName());
+    StringBuilder b = new StringBuilder();
+    b.append("TypeMap[")
+        .append(sourceType.getSimpleName())
+        .append(" -> ")
+        .append(destinationType.getSimpleName());
+    if (name != null)
+      b.append(' ').append(name);
+    return b.append(']').toString();
   }
 
   public void validate() {
-    if (converter != null)
+    if (converter != null || preConverter != null || postConverter != null)
       return;
 
     Errors errors = new Errors();

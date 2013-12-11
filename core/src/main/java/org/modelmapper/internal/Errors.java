@@ -30,6 +30,7 @@ import org.modelmapper.ConfigurationException;
 import org.modelmapper.MappingException;
 import org.modelmapper.TypeMap;
 import org.modelmapper.ValidationException;
+import org.modelmapper.internal.util.Strings;
 import org.modelmapper.internal.util.Types;
 import org.modelmapper.spi.ErrorMessage;
 import org.modelmapper.spi.PropertyInfo;
@@ -89,6 +90,7 @@ public final class Errors {
 
   /** Returns the formatted message for an exception with the specified messages. */
   public static String format(String heading, Collection<ErrorMessage> errorMessages) {
+    @SuppressWarnings("resource")
     Formatter fmt = new Formatter().format(heading).format(":%n%n");
     int index = 1;
     boolean displayCauses = getOnlyCause(errorMessages) == null;
@@ -168,6 +170,13 @@ public final class Errors {
     return addMessage(t, "Failed to get value from %s", member);
   }
 
+  public Errors errorInstantiatingDestination(Class<?> type, Throwable t) {
+    return addMessage(
+        t,
+        "Failed to instantiate instance of destination %s. Ensure that %s has a non-private no-argument constructor.",
+        type, type);
+  }
+
   public Errors errorMapping(Object source, Class<?> destinationType) {
     return addMessage("Error mapping %s to %s", source, Types.toString(destinationType));
   }
@@ -208,6 +217,11 @@ public final class Errors {
     return errors != null;
   }
 
+  public Errors invalidProvidedDestinationInstance(Object destination, Class<?> requiredType) {
+    return addMessage("The provided destination instance %s is not of the required type %s.",
+        destination, requiredType);
+  }
+
   public Errors merge(Collection<ErrorMessage> errorMessages) {
     for (ErrorMessage message : errorMessages)
       addMessage(message);
@@ -242,22 +256,14 @@ public final class Errors {
     return new MappingException(getMessages());
   }
 
-  Errors ambiguousDestination(Mutator destinationMutator, List<? extends PropertyMapping> mappings) {
+  Errors ambiguousDestination(List<? extends PropertyMapping> mappings) {
     List<String> sourcePropertyInfo = new ArrayList<String>();
-    for (PropertyMapping mapping : mappings) {
-      StringBuilder builder = new StringBuilder();
-      for (int i = 0; i < mapping.getSourceProperties().size(); i++) {
-        PropertyInfo info = mapping.getSourceProperties().get(i);
-        if (i > 0)
-          builder.append("/");
-        builder.append(Types.toString(info.getMember()));
-      }
-      sourcePropertyInfo.add(builder.toString());
-    }
+    for (PropertyMapping mapping : mappings)
+      sourcePropertyInfo.add(Strings.joinMembers(mapping.getSourceProperties()));
 
     return addMessage(
         "The destination property %s matches multiple source property hierarchies:\n\n%s",
-        destinationMutator, sourcePropertyInfo);
+        Strings.joinMembers(mappings.get(0).getDestinationProperties()), sourcePropertyInfo);
   }
 
   Errors duplicateMapping(PropertyInfo destinationProperty) {
@@ -291,16 +297,14 @@ public final class Errors {
         type, type);
   }
 
-  public Errors errorInstantiatingDestination(Class<?> type, Throwable t) {
-    return addMessage(
-        t,
-        "Failed to instantiate instance of destination %s. Ensure that %s has a non-private no-argument constructor.",
-        type, type);
+  Errors errorInvalidSourcePath(String sourcePath, Class<?> unresolveableType,
+      String unresolveableProperty) {
+    return addMessage("The source path %s is invalid: %s.%s cannot be resolved.", sourcePath,
+        unresolveableType, unresolveableProperty);
   }
 
-  public Errors invalidProvidedDestinationInstance(Object destination, Class<?> requiredType) {
-    return addMessage("The provided destination instance %s is not of the required type %s.",
-        destination, requiredType);
+  Errors errorNullArgument(String parameter) {
+    return addMessage("The %s cannot be null", parameter);
   }
 
   Errors invalidDestinationMethod(Method method) {

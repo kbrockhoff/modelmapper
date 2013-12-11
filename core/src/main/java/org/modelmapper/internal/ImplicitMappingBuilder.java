@@ -24,11 +24,12 @@ import java.util.Set;
 
 import org.modelmapper.Converter;
 import org.modelmapper.TypeMap;
-import org.modelmapper.config.Configuration;
+import org.modelmapper.internal.PropertyInfoImpl.ValueReaderPropertyInfo;
 import org.modelmapper.internal.converter.ConverterStore;
 import org.modelmapper.internal.util.Iterables;
 import org.modelmapper.internal.util.Primitives;
 import org.modelmapper.internal.util.Strings;
+import org.modelmapper.internal.util.Types;
 import org.modelmapper.spi.ConditionalConverter;
 import org.modelmapper.spi.ConditionalConverter.MatchResult;
 import org.modelmapper.spi.Mapping;
@@ -44,11 +45,11 @@ import org.modelmapper.spi.PropertyInfo;
  * 
  * @author Jonathan Halterman
  */
-class PropertyMappingBuilder<S, D> {
+class ImplicitMappingBuilder<S, D> {
   private final TypeMapImpl<S, D> typeMap;
   private final TypeInfo<S> sourceTypeInfo;
   private final TypeMapStore typeMapStore;
-  private final Configuration configuration;
+  private final InheritingConfiguration configuration;
   private final ConverterStore typeConverterStore;
   private final MatchingStrategy matchingStrategy;
 
@@ -65,13 +66,13 @@ class PropertyMappingBuilder<S, D> {
   /** Mappings which are to be merged in from a pre-existing TypeMap. */
   private final List<MappingImpl> mergedMappings = new ArrayList<MappingImpl>();
 
-  PropertyMappingBuilder(TypeMapImpl<S, D> typeMap, TypeMapStore typeMapStore,
+  ImplicitMappingBuilder(S source, TypeMapImpl<S, D> typeMap, TypeMapStore typeMapStore,
       ConverterStore converterStore) {
     this.typeMap = typeMap;
     this.typeConverterStore = converterStore;
     this.typeMapStore = typeMapStore;
     this.configuration = typeMap.configuration;
-    sourceTypeInfo = TypeInfoRegistry.typeInfoFor(typeMap.getSourceType(), configuration);
+    sourceTypeInfo = TypeInfoRegistry.typeInfoFor(source, typeMap.getSourceType(), configuration);
     matchingStrategy = configuration.getMatchingStrategy();
     propertyNameInfo = new PropertyNameInfoImpl(typeMap.getSourceType(), configuration);
   }
@@ -80,6 +81,10 @@ class PropertyMappingBuilder<S, D> {
     matchDestination(TypeInfoRegistry.typeInfoFor(typeMap.getDestinationType(), configuration));
   }
 
+  /**
+   * Matches the {@code destinationTypeInfo}'s mutator hierarchy hierarchy to the
+   * {@code sourceTypeInfo}'s accessor hierarchy.
+   */
   private void matchDestination(TypeInfo<?> destinationTypeInfo) {
     destinationTypes.add(destinationTypeInfo.getType());
 
@@ -96,7 +101,7 @@ class PropertyMappingBuilder<S, D> {
       }
 
       // Use partially matched mappings only if there is no fully matched mapping
-      if (mappings.isEmpty() && !partiallyMatchedMappings.isEmpty())
+      if (mappings.isEmpty())
         mappings.addAll(partiallyMatchedMappings);
 
       if (!mappings.isEmpty()) {
@@ -106,7 +111,7 @@ class PropertyMappingBuilder<S, D> {
         } else {
           mapping = disambiguateMappings();
           if (mapping == null && !configuration.isAmbiguityIgnored())
-            errors.ambiguousDestination(mutator, mappings);
+            errors.ambiguousDestination(mappings);
         }
 
         if (mapping != null) {
@@ -153,27 +158,27 @@ class PropertyMappingBuilder<S, D> {
     for (Map.Entry<String, Accessor> entry : sourceTypeInfo.getAccessors().entrySet()) {
       Accessor accessor = entry.getValue();
       propertyNameInfo.pushSource(entry.getKey(), entry.getValue());
+      boolean doneMatching = false;
 
       if (matchingStrategy.matches(propertyNameInfo)) {
         if (destinationTypes.contains(destinationMutator.getType())) {
           mappings.add(new PropertyMappingImpl(propertyNameInfo.getSourceProperties(),
               propertyNameInfo.getDestinationProperties(), true));
         } else {
-          PropertyMappingImpl mapping = null;
           TypeMap<?, ?> propertyTypeMap = typeMapStore.get(accessor.getType(),
-              destinationMutator.getType());
+              destinationMutator.getType(), null);
+          PropertyMappingImpl mapping = null;
 
-          // Create mapping(s) from existing TypeMap
+          // Check to create mapping(s) from existing TypeMap
           if (propertyTypeMap != null) {
             Converter<?, ?> propertyConverter = propertyTypeMap.getConverter();
             if (propertyConverter == null)
               mergeMappings(propertyTypeMap);
             else
               mappings.add(new PropertyMappingImpl(propertyNameInfo.getSourceProperties(),
-                  propertyNameInfo.getDestinationProperties(), propertyConverter));
-
-            if (matchingStrategy.isExact())
-              return;
+                  propertyNameInfo.getDestinationProperties(), propertyTypeMap.getProvider(),
+                  propertyConverter));
+            doneMatching = matchingStrategy.isExact();
           } else {
             for (ConditionalConverter<?, ?> converter : typeConverterStore.getConverters()) {
               MatchResult matchResult = converter.match(accessor.getType(),
@@ -185,12 +190,12 @@ class PropertyMappingBuilder<S, D> {
 
                 if (MatchResult.FULL.equals(matchResult)) {
                   mappings.add(mapping);
-                  if (matchingStrategy.isExact())
-                    return;
-                } else
+                  doneMatching = matchingStrategy.isExact();
+                  break;
+                } else if (!configuration.isFullTypeMatchingRequired()) {
                   partiallyMatchedMappings.add(mapping);
-
-                break;
+                  break;
+                }
               }
             }
           }
@@ -203,11 +208,15 @@ class PropertyMappingBuilder<S, D> {
         }
       }
 
-      if (isMatchable(accessor.getType()) && !sourceTypes.contains(accessor.getType()))
-        matchSource(TypeInfoRegistry.typeInfoFor(accessor.getType(), configuration),
-            destinationMutator);
+      if (!doneMatching
+          && isMatchable(accessor.getType())
+          && (!sourceTypes.contains(accessor.getType()) || accessor instanceof ValueReaderPropertyInfo))
+        matchSource(TypeInfoRegistry.typeInfoFor(accessor, configuration), destinationMutator);
 
       propertyNameInfo.popSource();
+
+      if (doneMatching)
+        break;
     }
 
     sourceTypes.remove(sourceTypeInfo.getType());
@@ -292,8 +301,8 @@ class PropertyMappingBuilder<S, D> {
           propertyNameInfo.getSourceProperties(), propertyNameInfo.getDestinationProperties()));
   }
 
-  boolean isMatchable(Class<?> type) {
+  static boolean isMatchable(Class<?> type) {
     return type != Object.class && type != String.class && !Primitives.isPrimitive(type)
-        && !Iterables.isIterable(type);
+        && !Iterables.isIterable(type) && !Types.isGroovyType(type);
   }
 }
