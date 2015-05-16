@@ -15,18 +15,20 @@
  */
 package org.modelmapper.internal;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
 import net.sf.cglib.core.DefaultNamingPolicy;
 import net.sf.cglib.core.NamingPolicy;
-import net.sf.cglib.proxy.Callback;
 import net.sf.cglib.proxy.CallbackFilter;
 import net.sf.cglib.proxy.Enhancer;
 import net.sf.cglib.proxy.MethodInterceptor;
 import net.sf.cglib.proxy.NoOp;
 
-import org.modelmapper.internal.util.Types;
+import org.modelmapper.internal.util.Primitives;
+import org.objenesis.Objenesis;
+import org.objenesis.ObjenesisStd;
 
 /**
  * Produces proxied instances of mappable types that participate in mapping creation.
@@ -34,30 +36,29 @@ import org.modelmapper.internal.util.Types;
  * @author Jonathan Halterman
  */
 class ProxyFactory {
+  private static final Objenesis OBJENESIS = new ObjenesisStd();
   private static final NamingPolicy NAMING_POLICY = new DefaultNamingPolicy() {
     @Override
     protected String getTag() {
       return "ByModelMapper";
     }
   };
-
   private static final CallbackFilter METHOD_FILTER = new CallbackFilter() {
     public int accept(Method method) {
       return method.isBridge()
-          || (method.getName().equals("finalize") && method.getParameterTypes().length == 0)
+          || method.getDeclaringClass().equals(Object.class)
+          || (method.getName().equals("equals") && method.getParameterTypes().length == 1
+              && method.getParameterTypes()[0].equals(Object.class) && method.getReturnType()
+              .equals(Boolean.TYPE))
           || (method.getReturnType().getName().equals("groovy.lang.MetaClass") && (method.getName()
               .equals("getMetaClass") || method.getName().startsWith("$"))) ? 1 : 0;
     }
   };
 
-  static boolean isProxy(Class<?> type) {
-    return Enhancer.isEnhanced(type);
-  }
-
-  static Class<?> proxyClassFor(Class<?> type) throws ErrorsException {
+  static Class<?> proxyClassFor(Class<?> type, Errors errors) throws ErrorsException {
     Enhancer enhancer = new Enhancer();
     enhancer.setSuperclass(type);
-    enhancer.setUseFactory(false);
+    enhancer.setUseFactory(true);
     enhancer.setUseCache(true);
     enhancer.setNamingPolicy(NAMING_POLICY);
     enhancer.setCallbackFilter(METHOD_FILTER);
@@ -66,31 +67,36 @@ class ProxyFactory {
     try {
       return enhancer.createClass();
     } catch (Throwable t) {
-      throw new Errors().errorEnhancingClass(type, t).toException();
+      throw errors.errorEnhancingClass(type, t).toException();
     }
   }
 
   /**
    * @throws ErrorsException if the proxy for {@code type} cannot be generated or instantiated
    */
-  static <T> T proxyFor(Class<T> type, ExplicitMappingProgress<?> mappingProgress)
+  @SuppressWarnings("unchecked")
+  static <T> T proxyFor(Class<T> type, MethodInterceptor interceptor, Errors errors)
       throws ErrorsException {
     if (Modifier.isFinal(type.getModifiers()))
-      return null;
+      return Primitives.defaultValueForWrapper(type);
 
-    Class<?> enhanced = proxyClassFor(type);
+    Class<?> enhanced = proxyClassFor(type, errors);
 
     try {
-      Enhancer.registerCallbacks(enhanced, new Callback[] {
-          new ExplicitMappingInterceptor(mappingProgress), NoOp.INSTANCE });
-      mappingProgress.enterConstructor();
-      T result = Types.construct(enhanced, type);
+      T result = (T) OBJENESIS.newInstance(enhanced);
+      setCallbacks(result, interceptor);
       return result;
     } catch (Throwable t) {
-      throw new Errors().errorInstantiatingProxy(type, t).toException();
-    } finally {
-      mappingProgress.leaveConstructor();
-      Enhancer.registerCallbacks(enhanced, null);
+      throw errors.errorInstantiatingProxy(type, t).toException();
     }
+  }
+
+  private static void setCallbacks(Object enhanced, MethodInterceptor interceptor) throws Exception {
+    Field callback1 = enhanced.getClass().getDeclaredField("CGLIB$CALLBACK_0");
+    callback1.setAccessible(true);
+    callback1.set(enhanced, interceptor);
+    Field callback2 = enhanced.getClass().getDeclaredField("CGLIB$CALLBACK_1");
+    callback2.setAccessible(true);
+    callback2.set(enhanced, NoOp.INSTANCE);
   }
 }

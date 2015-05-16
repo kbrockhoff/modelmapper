@@ -17,6 +17,7 @@ package org.modelmapper.internal;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
@@ -151,8 +152,9 @@ public final class Errors {
     return source;
   }
 
-  public Errors addError(String message, Throwable throwable) {
-    return addMessage(throwable, "An error occured while %s", message);
+  public Errors addMessage(Throwable cause, String message, Object... arguments) {
+    addMessage(new ErrorMessage(format(message, arguments), cause));
+    return this;
   }
 
   public Errors addMessage(ErrorMessage message) {
@@ -266,6 +268,10 @@ public final class Errors {
         Strings.joinMembers(mappings.get(0).getDestinationProperties()), sourcePropertyInfo);
   }
 
+  Errors conditionalSkipWithoutSource() {
+    return addMessage("A conditional skip can only be used with skip(Object, Object).");
+  }
+
   Errors duplicateMapping(PropertyInfo destinationProperty) {
     return addMessage("A mapping already exists for %s.", destinationProperty);
   }
@@ -297,6 +303,14 @@ public final class Errors {
         type, type);
   }
 
+  Errors errorResolvingClass(Throwable t, String className) {
+    return addMessage("Error resolving class %s", className);
+  }
+
+  Errors errorReadingClass(Throwable t, String className) {
+    return addMessage("Error reading class %s", className);
+  }
+
   Errors errorInvalidSourcePath(String sourcePath, Class<?> unresolveableType,
       String unresolveableProperty) {
     return addMessage("The source path %s is invalid: %s.%s cannot be resolved.", sourcePath,
@@ -313,14 +327,26 @@ public final class Errors {
         method);
   }
 
+  Errors invalidDestinationField(Field field) {
+    return addMessage("Invalid destination field %s. Ensure that field is not static.", field);
+  }
+
   Errors invalidSourceMethod(Method method) {
     return addMessage(
         "Invalid source method %s. Ensure that method has zero parameters and does not return void.",
         method);
   }
 
-  Errors invocationAgainstFinalClassOrMethod() {
-    return addMessage("Cannot map to final type.");
+  Errors invalidSourceField(Field field) {
+    return addMessage("Invalid source field %s. Ensure that field is not static.", field);
+  }
+
+  Errors invocationAgainstFinalClass(Class<?> type) {
+    return addMessage("Cannot map final type %s.", type);
+  }
+
+  Errors invocationAgainstFinalMethod(Member member) {
+    return addMessage("Cannot map final method %s.", member);
   }
 
   Errors mappingForEnum() {
@@ -328,7 +354,7 @@ public final class Errors {
   }
 
   Errors missingDestination() {
-    return addMessage("A mapping is missing a required destination method.");
+    return addMessage("A mapping is missing a required destination member.");
   }
 
   Errors missingMutatorForAccessor(Method method) {
@@ -336,7 +362,7 @@ public final class Errors {
   }
 
   Errors missingSource() {
-    return addMessage("A mapping is missing a required source method.");
+    return addMessage("A mapping is missing a required source member.");
   }
 
   Errors sourceOutsideOfMap() {
@@ -346,10 +372,5 @@ public final class Errors {
   void throwMappingExceptionIfErrorsExist() {
     if (hasErrors())
       throw new MappingException(getMessages());
-  }
-
-  private Errors addMessage(Throwable cause, String message, Object... arguments) {
-    addMessage(new ErrorMessage(format(message, arguments), cause));
-    return this;
   }
 }

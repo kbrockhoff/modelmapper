@@ -55,6 +55,9 @@ import org.modelmapper.spi.MappingContext;
 class NumberConverter implements ConditionalConverter<Object, Number> {
   public Number convert(MappingContext<Object, Number> context) {
     Object source = context.getSource();
+    if (source == null)
+      return null;
+
     Class<?> destinationType = Primitives.wrapperFor(context.getDestinationType());
 
     if (source instanceof Number)
@@ -62,9 +65,9 @@ class NumberConverter implements ConditionalConverter<Object, Number> {
     if (source instanceof Boolean)
       return numberFor(((Boolean) source).booleanValue() ? 1 : 0, destinationType);
     if (source instanceof Date && Long.class.equals(destinationType))
-      return new Long(((Date) source).getTime());
+      return Long.valueOf(((Date) source).getTime());
     if (source instanceof Calendar && Long.class.equals(destinationType))
-      return new Long(((Calendar) source).getTime().getTime());
+      return Long.valueOf(((Calendar) source).getTime().getTime());
     return numberFor(source.toString(), destinationType);
   }
 
@@ -150,7 +153,7 @@ class NumberConverter implements ConditionalConverter<Object, Number> {
   Number numberFor(String source, Class<?> destinationType) {
     String sourceString = source.trim();
     if (sourceString.length() == 0)
-      throw new Errors().errorMapping(source, destinationType).toMappingException();
+      return null;
 
     try {
       if (destinationType.equals(Byte.class))

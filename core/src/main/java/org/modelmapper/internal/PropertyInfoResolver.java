@@ -46,7 +46,7 @@ interface PropertyInfoResolver<M extends Member, PI extends PropertyInfo> {
   PropertyInfoResolver<Method, Accessor> ACCESSORS = new DefaultPropertyResolver<Method, Accessor>() {
     @Override
     public boolean isValid(Method method) {
-      return super.isValid(method) && method.getParameterTypes().length == 0
+      return super.isValid(method) && !method.isBridge() && method.getParameterTypes().length == 0
           && !method.getReturnType().equals(void.class);
     }
 
@@ -63,8 +63,11 @@ interface PropertyInfoResolver<M extends Member, PI extends PropertyInfo> {
   PropertyInfoResolver<Method, Mutator> MUTATORS = new DefaultPropertyResolver<Method, Mutator>() {
     @Override
     public boolean isValid(Method method) {
-      return super.isValid(method) && method.getParameterTypes().length == 1
-          && method.getReturnType().equals(void.class);
+      return super.isValid(method)
+          && !method.isBridge()
+          && method.getParameterTypes().length == 1
+          && (method.getReturnType().equals(void.class) || method.getReturnType().equals(
+              method.getDeclaringClass()));
     }
 
     public Mutator propertyInfoFor(Class<?> initialType, Method method,
@@ -80,7 +83,7 @@ interface PropertyInfoResolver<M extends Member, PI extends PropertyInfo> {
   static abstract class DefaultPropertyResolver<M extends Member, PI extends PropertyInfo>
       implements PropertyInfoResolver<M, PI> {
     public boolean isValid(M member) {
-      return !Modifier.isStatic(member.getModifiers());
+      return !Modifier.isStatic(member.getModifiers()) && !member.isSynthetic();
     }
   }
 

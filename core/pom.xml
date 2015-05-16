@@ -5,22 +5,47 @@
   <parent>
     <groupId>org.modelmapper</groupId>
     <artifactId>modelmapper-parent</artifactId>
-    <version>0.6.3-SNAPSHOT</version>
+    <version>0.7.5-SNAPSHOT</version>
   </parent>
 
   <artifactId>modelmapper</artifactId>
   <name>ModelMapper</name>
 
+  <properties>
+    <cglib.version>3.1</cglib.version>
+    <asm.version>5.0.3</asm.version>
+    <objenesis.version>2.1</objenesis.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.ow2.asm</groupId>
+        <artifactId>asm</artifactId>
+        <version>${asm.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
   <dependencies>
     <dependency>
       <groupId>cglib</groupId>
       <artifactId>cglib</artifactId>
-      <version>2.2.2</version>
+      <version>${cglib.version}</version>
     </dependency>
     <dependency>
-      <groupId>asm</groupId>
+      <groupId>org.ow2.asm</groupId>
       <artifactId>asm</artifactId>
-      <version>3.3.1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.ow2.asm</groupId>
+      <artifactId>asm-tree</artifactId>
+      <version>${asm.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.objenesis</groupId>
+      <artifactId>objenesis</artifactId>
+      <version>${objenesis.version}</version>
     </dependency>
 
     <!-- Test Dependencies -->
@@ -31,21 +56,9 @@
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>net.sf.dozer</groupId>
-      <artifactId>dozer</artifactId>
-      <version>5.3.2</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-jdk14</artifactId>
       <version>1.5.8</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>ma.glasnost.orika</groupId>
-      <artifactId>orika-core</artifactId>
-      <version>1.1.6</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -54,10 +67,35 @@
       <version>1.9.0</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <version>1.4.182</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.hibernate</groupId>
+      <artifactId>hibernate-entitymanager</artifactId>
+      <version>4.3.7.Final</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Benchmarking dependencies -->
+    <dependency>
+      <groupId>net.sf.dozer</groupId>
+      <artifactId>dozer</artifactId>
+      <version>5.3.2</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>ma.glasnost.orika</groupId>
+      <artifactId>orika-core</artifactId>
+      <version>1.1.6</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
-
     <plugins>
       <plugin>
         <artifactId>maven-jar-plugin</artifactId>
@@ -85,6 +123,8 @@
               <includes>
                 <include>net/sf/cglib/core/**</include>
                 <include>net/sf/cglib/proxy/**</include>
+                <include>net/sf/cglib/reflect/**</include>
+                <include>net/sf/cglib/transform/ClassTransformer.class</include>
               </includes>
             </filter>
           </filters>
@@ -96,6 +136,10 @@
             <relocation>
               <pattern>org.objectweb.asm</pattern>
               <shadedPattern>org.modelmapper.internal.asm</shadedPattern>
+            </relocation>
+            <relocation>
+              <pattern>org.objenesis</pattern>
+              <shadedPattern>org.modelmapper.internal.objenesis</shadedPattern>
             </relocation>
           </relocations>
         </configuration>
@@ -146,13 +190,42 @@
               org.modelmapper.internal.**
             </Private-Package>
             <Import-Package>
-              *
+              !net.sf.cglib.*,*
             </Import-Package>
             <Include-Resource>
               {maven-resources},
               {maven-dependencies}
             </Include-Resource>
           </instructions>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.google.code.maven-replacer-plugin</groupId>
+        <artifactId>replacer</artifactId>
+        <version>1.5.2</version>
+        <executions>
+          <execution>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>replace</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <!-- the maven-bundle-plugin discards the shaded packages from Export-Package, so we have to 
+            add them like this. -->
+          <file>${project.build.outputDirectory}/META-INF/MANIFEST.MF</file>
+          <regex>false</regex>
+          <replacements>
+            <replacement>
+              <token>Export-Package: org.modelmapper</token>
+              <value>Export-Package: org.modelmapper.internal.cglib.proxy;version=${cglib.version},
+                org.modelmapper.internal.cglib.core;version=${cglib.version},
+                org.modelmapper.internal.cglib.transform;version=${cglib.version},
+                org.modelmapper
+              </value>
+            </replacement>
+          </replacements>
         </configuration>
       </plugin>
     </plugins>

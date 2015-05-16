@@ -15,27 +15,17 @@
  */
 package org.modelmapper.internal;
 
-import java.lang.reflect.Constructor;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
-import org.modelmapper.Condition;
-import org.modelmapper.ConfigurationException;
-import org.modelmapper.Converter;
-import org.modelmapper.Provider;
-import org.modelmapper.TypeMap;
-import org.modelmapper.TypeToken;
+import org.modelmapper.*;
 import org.modelmapper.internal.converter.ConverterStore;
 import org.modelmapper.internal.util.Iterables;
 import org.modelmapper.internal.util.Primitives;
 import org.modelmapper.internal.util.Types;
-import org.modelmapper.spi.ConstantMapping;
-import org.modelmapper.spi.Mapping;
-import org.modelmapper.spi.MappingContext;
-import org.modelmapper.spi.MappingEngine;
-import org.modelmapper.spi.PropertyMapping;
-import org.modelmapper.spi.SourceMapping;
+import org.modelmapper.spi.*;
+
+import java.lang.reflect.Constructor;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * MappingEngine implementation that caches ConditionalConverters by source and destination type
@@ -102,7 +92,7 @@ public class MappingEngineImpl implements MappingEngine {
       destination = typeMap(contextImpl, typeMap);
     } else {
       Converter<S, D> converter = converterFor(context);
-      if (converter != null) {
+      if (converter != null && (context.getDestination() == null || context.getParent() != null)) {
         destination = convert(context, converter);
       } else {
         // Call getOrCreate in case TypeMap was created concurrently
@@ -135,7 +125,7 @@ public class MappingEngineImpl implements MappingEngine {
 
       converter = typeMap.getPreConverter();
       if (converter != null)
-        context.setDestination(convert(context, converter));
+        context.setDestination(convert(context, converter), true);
 
       for (Mapping mapping : typeMap.getMappings())
         propertyMap(mapping, context);
@@ -151,7 +141,8 @@ public class MappingEngineImpl implements MappingEngine {
   @SuppressWarnings("unchecked")
   private <S, D> void propertyMap(Mapping mapping, MappingContextImpl<S, D> context) {
     MappingImpl mappingImpl = (MappingImpl) mapping;
-    if (context.isShaded(mappingImpl.getPath()))
+    String propertyPath = context.destinationPath + mappingImpl.getPath();
+    if (context.isShaded(propertyPath))
       return;
 
     Condition<Object, Object> condition = (Condition<Object, Object>) mapping.getCondition();
@@ -164,11 +155,11 @@ public class MappingEngineImpl implements MappingEngine {
 
     Object source = resolveSourceValue(context, mapping);
     MappingContextImpl<Object, Object> propertyContext = propertyContextFor(context, source,
-        mapping);
+        mappingImpl);
 
     if (condition != null) {
       if (!condition.applies(propertyContext)) {
-        context.shadePath(mappingImpl.getPath());
+        context.shadePath(propertyPath);
         return;
       } else if (mapping.isSkipped())
         return;
@@ -178,7 +169,7 @@ public class MappingEngineImpl implements MappingEngine {
     if (converter == null)
       converter = (Converter<Object, Object>) context.getTypeMap().getPropertyConverter();
     if (converter != null)
-      context.shadePath(mappingImpl.getPath());
+      context.shadePath(propertyPath);
     else if (mapping instanceof SourceMapping)
       return;
 
@@ -222,6 +213,7 @@ public class MappingEngineImpl implements MappingEngine {
     Object destination = context.getDestination();
     List<Mutator> mutatorChain = (List<Mutator>) mapping.getDestinationProperties();
     StringBuilder destPathBuilder = new StringBuilder();
+    destPathBuilder.append(context.destinationPath);
 
     for (int i = 0; i < mutatorChain.size(); i++) {
       Mutator mutator = mutatorChain.get(i);
@@ -241,12 +233,16 @@ public class MappingEngineImpl implements MappingEngine {
                 .get(mutator.getName());
             if (accessor != null) {
               Object intermediateDest = accessor.getValue(destination);
-              propertyContext.setDestination(intermediateDest);
+              propertyContext.setDestination(intermediateDest, true);
             }
           }
 
           destinationValue = convert(propertyContext, converter);
-        } else if (propertyContext.getSource() != null)
+        } else if (propertyContext.getSource() == null) {
+          converter = converterFor(propertyContext);
+          if (converter != null)
+            destinationValue = convert(propertyContext, converter);
+        } else
           destinationValue = map(propertyContext);
 
         context.destinationCache.put(destPath, destinationValue);
@@ -254,7 +250,7 @@ public class MappingEngineImpl implements MappingEngine {
             destinationValue == null ? Primitives.defaultValue(mutator.getType())
                 : destinationValue);
         if (destinationValue == null)
-          context.shadePath(mapping.getPath());
+          context.shadePath(propertyContext.destinationPath);
       } else {
         // Obtain from cache
         Object intermediateDest = context.destinationCache.get(destPath);
@@ -312,7 +308,7 @@ public class MappingEngineImpl implements MappingEngine {
    */
   @SuppressWarnings({ "rawtypes", "unchecked" })
   private MappingContextImpl<Object, Object> propertyContextFor(MappingContextImpl<?, ?> context,
-      Object source, Mapping mapping) {
+      Object source, MappingImpl mapping) {
     Class<?> sourceType;
     boolean cyclic = false;
 
@@ -411,7 +407,7 @@ public class MappingEngineImpl implements MappingEngine {
       return destination;
 
     destination = instantiate(context.getDestinationType(), contextImpl.errors);
-    contextImpl.setDestination(destination);
+    contextImpl.setDestination(destination, true);
     return destination;
   }
 
@@ -437,7 +433,7 @@ public class MappingEngineImpl implements MappingEngine {
 
     D destination = provider.get(context);
     validateDestination(context.getDestinationType(), destination, context.errors);
-    context.setDestination(destination);
+    context.setDestination(destination, false);
     return destination;
   }
 

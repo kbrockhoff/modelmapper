@@ -34,6 +34,7 @@ import org.modelmapper.internal.util.TypeResolver;
  *   public class OrderMap extends PropertyMap&lt;Order, OrderDTO&gt;() {
  *     protected void configure() {
  *       map().setCustomer(source.getCustomerName());
+ *       map().address.setStreet(source.address.streetName);
  *     }
  *   };
  * </pre>
@@ -52,13 +53,26 @@ import org.modelmapper.internal.util.TypeResolver;
  * 
  * <pre>    map().setName(source.getFirstName());</pre>
  * 
+ * This example maps the destination type's {@code setLastName} method to the source type's
+ * {@code surName} field.
+ * 
+ * <pre>    map().setLastName(source.surName);</pre>
+ * 
+ * Alternatively we can map the source type's {@code surName} field directly destination type's
+ * {@code lastName} field.
+ * 
+ * <pre>    map(source.surName, destination.lastName);</pre>
+ * 
  * This example maps the destination type's {@code setEmployer} method to the constant
  * {@code "Initech"}.
  * 
  * <pre>    map().setEmployer(&quot;Initech&quot;);</pre>
  * 
- * Map statements can also be written to accept a source property, allowing mapping to a destination
- * whose type does not match the source property's type:
+ * This example maps the constant {@code "Initech"} to destination type's {@code employer} field.
+ * 
+ * <pre>    map("Initech", destination.employer);</pre>
+ * 
+ * Map statements can also be written to map methods whose types do not match:
  * 
  * <pre>    map(source.getAge()).setAgeString(null);</pre>
  * 
@@ -66,8 +80,8 @@ import org.modelmapper.internal.util.TypeResolver;
  * 
  * <pre>    map(21).setAgeString(null);</pre>
  * 
- * <b>Note</b>: Since the {@code setAgeString} method requires a value we simply pass in
- * {@code null} which is unused.
+ * <b>Note</b>: When a value is provided on the left-hand side of a {@code map} method, any value
+ * provided on the right-hand side in a setter is not used.
  * 
  * <h3 id=2>Deep mapping</h3>
  * <p>
@@ -78,14 +92,26 @@ import org.modelmapper.internal.util.TypeResolver;
  * <pre>    map().setAge(source.getCustomer().getAge());</pre>
  * 
  * This example maps the destination type's {@code getCustomer().setName()} method hierarchy to the
- * source type's {@code getPerson().getFirstName()} method hierarchy.
+ * source type's {@code getPerson().getFirstName()} property hierarchy.
  * 
- * <pre>    map().getCustomer().setName(source.getPerson().getFirstName());</pre>
+ * <pre>    map().getCustomer().setName(source.person.getFirstName());</pre>
  * 
- * <b>Note</b>: In order populate the destination object, deep mapping requires the
+ * <b>Note</b>: In order to populate the destination object, deep mapping requires the
  * {@code getCustomer} method to have a corresponding mutator, such as a {@code setCustomer} method
  * or an {@link org.modelmapper.config.Configuration#setFieldAccessLevel(AccessLevel) accessible}
  * {@code customer} field.
+ * <p>
+ * We can also mix field references into either the source or destination when deep mapping.
+ * 
+ * <pre>
+ *    map(source.customer.age, destination);
+ *    map().customer.setName(source.getPerson().firstName);
+ * </pre>
+ * 
+ * Deep mapping can also be performed for source properties or values whose types do not match the
+ * destination property’s type.
+ * 
+ * <pre>    map(source.person.getAge()).setAgeString(null);</pre>
  * 
  * <h3 id=3>Skipping properties</h3>
  * <p>
@@ -95,6 +121,10 @@ import org.modelmapper.internal.util.TypeResolver;
  * <pre>    skip().setName(null);</pre>
  * 
  * <b>Note</b>: Since the {@code setName} method is skipped the {@code null} value is unused.
+ * <p>
+ * We can also skip the mapping of fields.
+ * 
+ * <pre>    skip(destination.address);</pre>
  * 
  * <h3 id=4>Converters</h3>
  * <p>
@@ -102,6 +132,10 @@ import org.modelmapper.internal.util.TypeResolver;
  * source type's {@code getName} method to the destination type's {@code setName} method:
  * 
  * <pre>    using(toUppercase).map().setName(source.getName());</pre>
+ * 
+ * We can also use a Converter to map fields:
+ * 
+ * <pre>    using(toUppercase).map(source.name, destination.name);</pre>
  * 
  * This example specifies that the {@code personToNameConverter} {@link Converter} be used when
  * mapping the source <i>object</i> to the destination type's {@code setName} method:
@@ -119,6 +153,10 @@ import org.modelmapper.internal.util.TypeResolver;
  * {@code setAddress} method will be skipped.
  * 
  * <pre>    when(isLocalAddress).map().setAddress(source.getAddress());</pre>
+ * 
+ * We can also conditionally skip the mapping of fields.
+ * 
+ * <pre>    when(notNull).skip(source.name, destination.name);</pre>
  * 
  * This example specifies that the {@code Conditions.isNull} {@link Condition} must apply in order
  * for mapping to the destination type's {@code setAge} method to be <i>skipped</i>. If the
@@ -160,6 +198,14 @@ public abstract class PropertyMap<S, D> {
    * {@link #configure()} .
    */
   public S source;
+  /**
+   * The destination instance to be used in a mapping declaration. See the <a href="#1">EDSL
+   * examples</a>.
+   * <p>
+   * <b>Throws:</b> NullPointerException if dereferenced from outside the context of
+   * {@link #configure()} .
+   */
+  public D destination;
   Class<D> destinationType;
   Class<S> sourceType;
   private ExplicitMappingBuilder<S, D> builder;
@@ -203,16 +249,29 @@ public abstract class PropertyMap<S, D> {
   }
 
   /**
-   * Defines a mapping from the {@code source} to a destination. See the See the <a href="#0">EDSL
-   * examples</a>.
+   * Defines a mapping for the {@code subject}. See the See the <a href="#0">EDSL examples</a>.
    * 
-   * @param source to map from
+   * @param subject to map
    * @throws IllegalStateException if called from outside the context of
    *           {@link PropertyMap#configure()}.
    */
-  protected final D map(Object source) {
+  protected final D map(Object subject) {
     assertBuilder();
-    return builder.map(source);
+    return builder.map(subject);
+  }
+
+  /**
+   * Defines a mapping from the {@code source} to the {@code destination}. See the See the <a
+   * href="#0">EDSL examples</a>.
+   * 
+   * @param source to map from
+   * @param destination to map to
+   * @throws IllegalStateException if called from outside the context of
+   *           {@link PropertyMap#configure()}.
+   */
+  protected final void map(Object source, Object destination) {
+    assertBuilder();
+    builder.map(source, destination);
   }
 
   /**
@@ -225,6 +284,34 @@ public abstract class PropertyMap<S, D> {
   protected final D skip() {
     assertBuilder();
     return builder.skip();
+  }
+
+  /**
+   * Specifies that mapping to the {@code destination} be skipped during the mapping process. See
+   * the <a href="#3">EDSL examples</a>.
+   * 
+   * @param destination to skip
+   * @throws IllegalStateException if called from outside the context of
+   *           {@link PropertyMap#configure()}.
+   */
+  protected final void skip(Object destination) {
+    assertBuilder();
+    builder.skip(destination);
+  }
+
+  /**
+   * Specifies that mapping from the {@code source} to the {@code destination} be skipped during the
+   * mapping process. See the EDSL examples at {@link PropertyMap}. See the <a href="#3">EDSL
+   * examples</a>.
+   * 
+   * @param source to skip
+   * @param destination to skip
+   * @throws IllegalStateException if called from outside the context of
+   *           {@link PropertyMap#configure()}.
+   */
+  protected final void skip(Object source, Object destination) {
+    assertBuilder();
+    builder.skip(source, destination);
   }
 
   /**
@@ -288,9 +375,11 @@ public abstract class PropertyMap<S, D> {
   @SuppressWarnings("unused")
   private synchronized void configure(ExplicitMappingBuilder<S, D> builder) {
     this.builder = builder;
-    this.source = builder.getSource();
 
     try {
+      builder.visitPropertyMap(this);
+      source = builder.source;
+      destination = builder.destination;
       configure();
     } finally {
       this.builder = null;

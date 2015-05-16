@@ -27,6 +27,19 @@ import org.modelmapper.TypeMap;
  */
 public interface MappingContext<S, D> {
   /**
+   * Creates a new child MappingContext for the {@code source} and {@code destination} which
+   * inherits all other information from the this MappingContext.
+   * 
+   * @param <CS> child source type
+   * @param <CD> child destination type
+   * @param source to map from
+   * @param destination to map to
+   * @return new child MappingContext
+   * @throws IllegalArgumentException if {@code source} or {@code destination} are null
+   */
+  <CS, CD> MappingContext<CS, CD> create(CS source, CD destination);
+
+  /**
    * Creates a new child MappingContext for the {@code source} and {@code destinationType} which
    * inherits all other information from the this MappingContext.
    * 
